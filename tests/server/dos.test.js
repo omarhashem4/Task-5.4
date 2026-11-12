@@ -19,25 +19,17 @@ afterAll(async () => {
 });
 
 describe('Maintenance requests — DoS / rate limiting', () => {
-  test('a normal request to the public list succeeds (the happy path)', async () => {
-    const res = await request(app).get('/api/maintenance');
-    expect(res.status).toBe(200);
-    expect(Array.isArray(res.body.requests)).toBe(true);
-  });
+  test('allows maintenance reads up to the limit, then responds with 429', async () => {
+    const first = await request(app).get('/api/maintenance').expect(200);
+    expect(Array.isArray(first.body.requests)).toBe(true);
 
-  // The core DoS test. One client floods the public endpoint. A secure server
-  // rate-limits it (429 after a small number of requests) so a flood cannot
-  // exhaust it; a vulnerable server serves every request (200), unbounded.
-  test('a flood of requests from one client is rate-limited', async () => {
-    const statuses = [];
-    for (let i = 0; i < 40; i++) {
+    const statuses = [first.status];
+    for (let i = 1; i < 61; i++) {
       const res = await request(app).get('/api/maintenance');
       statuses.push(res.status);
     }
 
-    // Legitimate traffic is still served early in the window...
-    expect(statuses).toContain(200);
-    // ...but the flood is throttled with 429 Too Many Requests.
-    expect(statuses).toContain(429);
+    expect(statuses.slice(0, 60)).toEqual(Array(60).fill(200));
+    expect(statuses[60]).toBe(429);
   });
 });

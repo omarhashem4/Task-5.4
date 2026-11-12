@@ -40,20 +40,17 @@ describe('Maintenance requests — CSRF protection', () => {
   test('a logged-in user can file a maintenance request (the happy path)', async () => {
     const authCookies = await registerUser();
 
-    // The real client fetches a CSRF token first. The vulnerable app has no such
-    // endpoint (404) — tolerate that so this control test passes in both projects.
-    let cookies = [...authCookies];
-    const headers = {};
-    const tokenRes = await request(app).get('/api/csrf-token').set('Cookie', cookies.join('; '));
-    if (tokenRes.status === 200) {
-      headers['x-csrf-token'] = tokenRes.body.csrfToken;
-      cookies = [...cookies, ...cookiePairs(tokenRes.headers['set-cookie'])];
-    }
+    const tokenRes = await request(app)
+      .get('/api/auth/csrf-token')
+      .set('Cookie', authCookies.join('; '))
+      .expect(200);
+    expect(tokenRes.body.csrfToken).toEqual(expect.any(String));
 
+    const cookies = [...authCookies, ...cookiePairs(tokenRes.headers['set-cookie'])];
     const res = await request(app)
       .post('/api/maintenance')
       .set('Cookie', cookies.join('; '))
-      .set(headers)
+      .set('x-csrf-token', tokenRes.body.csrfToken)
       .send({ roomNumber: 'B2-104', category: 'plumbing', description: 'Leaking tap' });
     expect(res.status).toBe(201);
     expect(res.body.request.description).toBe('Leaking tap');
